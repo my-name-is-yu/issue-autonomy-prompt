@@ -1,14 +1,15 @@
 # Autonomy Prompt Provider
 
-A small Codex skill set for turning GitHub issue and PR queues into focused,
-paste-ready prompts for autonomous coding sessions.
+A small Codex skill set for turning GitHub issue queues into focused autonomous
+coding prompts and safely checking or merging the PRs that come out of those
+runs.
 
 It contains two companion skills:
 
 - `issue-autonomy-prompt`: ranks open issues and drafts an implementation prompt
   that opens ready PRs without merging them.
-- `pr-batch-check-merge-prompt`: drafts a PR queue check/merge prompt for the
-  PRs produced by an implementation run.
+- `pr-batch-check-merge`: checks live PR state and merges or queues PRs that
+  satisfy every gate when merge authority is explicit.
 
 The issue skill helps a coding agent:
 
@@ -31,7 +32,7 @@ The PR skill helps a coding agent:
   order, merge queue state, and mergeability
 - treat stacked PR checks as provisional until replayed onto the default branch
 - treat unknown required gates as blocking
-- merge PRs classified `ready-to-merge` when the user explicitly asks for a
+- merge or queue PRs classified as safe when the user explicitly asks for a
   merge run
 
 ## Install
@@ -41,7 +42,7 @@ Copy both skill directories into your Codex skills directory:
 ```bash
 mkdir -p ~/.codex/skills
 rsync -a issue-autonomy-prompt/ ~/.codex/skills/issue-autonomy-prompt/
-rsync -a pr-batch-check-merge-prompt/ ~/.codex/skills/pr-batch-check-merge-prompt/
+rsync -a pr-batch-check-merge/ ~/.codex/skills/pr-batch-check-merge/
 ```
 
 Restart or refresh your Codex session so the skill list is reloaded.
@@ -65,12 +66,12 @@ For larger batches, the issue skill can classify parallel-safe lanes. If the
 environment cannot run multiple coding sessions, the generated prompt should
 serialize those lanes while preserving the metadata for later integration.
 
-After the implementation session opens PRs, use `pr-batch-check-merge-prompt`
-to prepare a separate PR queue check/merge prompt:
+After the implementation session opens PRs, use `pr-batch-check-merge` to
+check the PR queue and merge the safe PRs:
 
 ```text
-Use pr-batch-check-merge-prompt for these PRs. Check CI, reviews, conflicts,
-stack order, and mergeability. Merge the PRs that are safe.
+Use pr-batch-check-merge for these PRs. Check CI, reviews, conflicts, stack
+order, and mergeability. Merge the PRs that are safe.
 ```
 
 ## Safety Defaults
@@ -83,7 +84,8 @@ authority behind explicit user permission.
 By default, implementation prompts tell the session to open ready PRs and
 inspect checks, but not merge. Merge execution is handled by the companion PR
 skill. When the user asks that companion skill to merge safe PRs, it should
-produce a prompt that merges only PRs classified `ready-to-merge`.
+execute only after live PR state proves the PR is ready to merge or ready to
+enter a required merge queue.
 
 ## Development
 
@@ -93,5 +95,5 @@ Run the lightweight checker before publishing changes:
 scripts/check-skill.sh
 ```
 
-Do not tag a release until you have tried the installed skill in a real Codex
-session and reviewed the generated prompt shape.
+Do not tag a release until you have tried the installed skills in a real Codex
+session and reviewed the PR execution behavior.

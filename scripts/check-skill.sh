@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 skill_file="$repo_root/issue-autonomy-prompt/SKILL.md"
-pr_skill_file="$repo_root/pr-batch-check-merge-prompt/SKILL.md"
+pr_skill_file="$repo_root/pr-batch-check-merge/SKILL.md"
+old_pr_skill='pr-batch-check-merge-''prompt'
 
 fail() {
   printf 'check-skill: %s\n' "$1" >&2
@@ -11,12 +12,14 @@ fail() {
 }
 
 [[ -f "$skill_file" ]] || fail "missing issue-autonomy-prompt/SKILL.md"
-[[ -f "$pr_skill_file" ]] || fail "missing pr-batch-check-merge-prompt/SKILL.md"
+[[ -f "$pr_skill_file" ]] || fail "missing pr-batch-check-merge/SKILL.md"
+[[ ! -e "$repo_root/$old_pr_skill" ]] \
+  || fail "old PR prompt skill directory must not exist"
 
 grep -q '^name: issue-autonomy-prompt$' "$skill_file" \
   || fail "missing expected skill name"
 
-grep -q '^name: pr-batch-check-merge-prompt$' "$pr_skill_file" \
+grep -q '^name: pr-batch-check-merge$' "$pr_skill_file" \
   || fail "missing expected PR skill name"
 
 grep -q 'Worktree and lane strategy' "$skill_file" \
@@ -58,7 +61,16 @@ grep -q '^````md$' "$skill_file" \
 grep -q 'Merge authority must be explicit' "$pr_skill_file" \
   || fail "PR skill must require explicit merge authority"
 
-grep -q 'Do not merge a dependent PR solely because it passed against a prerequisite' "$pr_skill_file" \
+grep -q 'Do not draft a prompt' "$pr_skill_file" \
+  || fail "PR skill must execute rather than draft prompts"
+
+grep -q 'classification and report' "$pr_skill_file" \
+  || fail "PR skill must stop without merging for check-only requests"
+
+grep -q 'merge or enqueue the PRs' "$pr_skill_file" \
+  || fail "PR skill must perform merge or queue actions"
+
+grep -q 'merge a stacked PR until' "$pr_skill_file" \
   || fail "PR skill must handle stacked PR provisional checks"
 
 grep -q 'Build the Readiness Model' "$pr_skill_file" \
@@ -87,30 +99,32 @@ fi
 grep -q 'Machine review signals' "$pr_skill_file" \
   || fail "PR skill must classify machine review signals"
 
-grep -q 'Do not include merge commands in' "$pr_skill_file" \
-  || fail "PR skill must omit merge commands when authority is absent"
-
 merge_cmd='gh pr mer''ge'
 if grep -RIn "$merge_cmd" "$skill_file"; then
   fail "implementation skill must not contain merge command"
 fi
 
-grep -q "$merge_cmd <number> --squash --delete-branch" "$pr_skill_file" \
-  || fail "PR skill must output merge command for authorized ready PRs"
+grep -q "$merge_cmd <number> --squash --delete-branch --match-head-commit <head_sha>" "$pr_skill_file" \
+  || fail "PR skill must execute direct merge with head SHA guard"
 
-grep -q 'Authorized merge commands' "$pr_skill_file" \
-  || fail "PR skill must split authorized merge commands into addendum"
+grep -q "$merge_cmd <number> --auto --delete-branch --match-head-commit <head_sha>" "$pr_skill_file" \
+  || fail "PR skill must enqueue merge-queue PRs with head SHA guard"
 
-grep -q 'Do not append it to check-only prompts' "$pr_skill_file" \
-  || fail "PR skill must keep merge commands out of check-only prompts"
+grep -q 'Never use `--admin`' "$pr_skill_file" \
+  || fail "PR skill must forbid admin bypass"
 
-grep -q 'explicit merge authority for PRs classified `ready-to-merge`' "$pr_skill_file" \
+grep -q 'authority for PRs classified `ready-to-merge`' "$pr_skill_file" \
   || fail "PR skill must define merge-run authority"
 
-grep -q 'merge PRs classified `ready-to-merge`' "$pr_skill_file" \
-  || fail "PR skill must merge ready PRs in merge runs"
+grep -q 'Do not draft a prompt unless the user explicitly asks for a prompt' "$pr_skill_file" \
+  || fail "PR skill must avoid prompt-only behavior"
+
 if grep -RIn "$merge_cmd" README.md examples; then
   fail "README/examples should not hard-code merge execution"
+fi
+
+if grep -RIn "$old_pr_skill" README.md issue-autonomy-prompt examples pr-batch-check-merge scripts; then
+  fail "found old PR prompt skill name"
 fi
 
 old_skill="github-issue-autonomy-""planner"

@@ -49,7 +49,7 @@ Per-issue workflow:
 5. Implement, test, review, commit, push, and open a ready PR.
 6. For #124, open the PR against `codex/issue-123-example`, not `main`.
 7. Inspect checks with `gh pr checks --watch` when available.
-8. Do not merge. Add the PR to the final handoff prompt.
+8. Do not merge. Add the PR to the final handoff block.
 
 PR readiness manifest:
 
@@ -81,7 +81,7 @@ PR readiness manifest:
   stack_parent: #201
   replay_required: true
   replay_plan: rebase
-  replay_owner: pr-batch-check-merge-prompt
+  replay_owner: pr-batch-check-merge
   validation: ["npm test -- schema"]
   ci_state_observed: pending
   review_state_observed: needs-review
@@ -90,10 +90,10 @@ PR readiness manifest:
   next_action: replay-then-check
 ```
 
-PR batch check/merge handoff prompt:
+PR batch check/merge handoff block:
 
 ```text
-Use `pr-batch-check-merge-prompt` if it is installed.
+Use `pr-batch-check-merge` if it is installed.
 
 Repository: /path/to/repo
 Default branch: main
@@ -110,5 +110,7 @@ for stacked PRs as provisional until the dependent PR is replayed onto the
 latest default branch after prerequisite merges.
 
 Do not merge anything unless the user explicitly grants merge authority for
-this PR batch check/merge run.
+this PR batch check/merge run. If merge authority is granted,
+`pr-batch-check-merge` should execute the live checks and merge or queue only
+PRs that satisfy every gate.
 ```

@@ -184,7 +184,7 @@ Include:
 - safety/approval constraints
 - status-file path
 - PR readiness manifest contract
-- PR batch check/merge handoff prompt
+- PR batch check/merge handoff block
 - final-report format
 
 Default status file:
@@ -249,7 +249,7 @@ Execution modes:
   Branch the dependent issue from the prerequisite issue branch, open the
   dependent PR against that prerequisite branch, mark checks as provisional
   until the stack is replayed onto the default branch, and include the stack
-  order in the handoff prompt.
+  order in the handoff block.
 - `bundled PR`: use only when separate PRs would knowingly create broken
   intermediate states, duplicate the same migration/schema/test-fixture change,
   or split one acceptance path that cannot be meaningfully separated. The PR
@@ -261,11 +261,11 @@ Execution modes:
 The generated implementation prompt should never tell the implementation
 session to merge PRs, close issues manually, or mutate PR base branches after
 handoff unless the user explicitly asks for that in the implementation run.
-Merge execution belongs in a separate PR batch check/merge session.
+Merge execution belongs in a separate PR batch check/merge run.
 
 Stacked PR metadata must include the original base SHA, prerequisite PR or
 branch, dependent branch, expected replay action (`rebase`, `retarget`, or
-`cherry-pick`), and replay owner (`pr-batch-check-merge-prompt`, `human`, or
+`cherry-pick`), and replay owner (`pr-batch-check-merge`, `human`, or
 `blocked`). The implementation session must not silently retarget stacked PRs
 after handoff.
 
@@ -275,7 +275,7 @@ validation evidence and CI inspection were captured, independent review status
 was recorded when available, unresolved risks were listed, and replay or human
 judgment needs were marked. It does not mean merge-ready.
 
-Emit a compact PR readiness manifest for the PR batch check/merge session. Use
+Emit a compact PR readiness manifest for the PR batch check/merge run. Use
 this shape:
 
 ```text
@@ -292,7 +292,7 @@ PR readiness manifest:
   stack_order: <position or none>
   replay_required: true | false
   replay_plan: <rebase | retarget | cherry-pick | none | unknown>
-  replay_owner: pr-batch-check-merge-prompt | human | blocked | none
+  replay_owner: pr-batch-check-merge | human | blocked | none
   validation: [<commands and results>]
   ci_state_observed: <passing | failing | pending | not-run | unknown>
   review_state_observed: <clear | findings-fixed | needs-review | unknown>
@@ -303,8 +303,8 @@ PR readiness manifest:
 ```
 
 At the end of the generated implementation prompt, include a paste-ready
-handoff prompt for a PR batch check/merge session. If a companion skill named
-`pr-batch-check-merge-prompt` is installed, tell the next session to use it.
+handoff block for a PR batch check/merge run. If a companion skill named
+`pr-batch-check-merge` is installed, tell the user or next session to use it.
 
 ## Prompt Template
 
@@ -549,12 +549,12 @@ Final report:
 - CI/check results
 - follow-up issues
 - items needing human judgment
-- PR batch check/merge handoff prompt
+- PR batch check/merge handoff block
 
-PR batch check/merge handoff prompt:
+PR batch check/merge handoff block:
 
 ```text
-Use `pr-batch-check-merge-prompt` if it is installed.
+Use `pr-batch-check-merge` if it is installed.
 
 Repository: <BASE_REPO_PATH>
 Default branch: <DEFAULT_BRANCH>
@@ -573,7 +573,7 @@ PR readiness manifest:
   stack_order: <position or none>
   replay_required: <true | false>
   replay_plan: <rebase | retarget | cherry-pick | none | unknown>
-  replay_owner: <pr-batch-check-merge-prompt | human | blocked | none>
+  replay_owner: <pr-batch-check-merge | human | blocked | none>
   validation: [<commands and results>]
   ci_state_observed: <passing | failing | pending | not-run | unknown>
   review_state_observed: <clear | findings-fixed | needs-review | unknown>
@@ -594,7 +594,9 @@ for stacked PRs as provisional until their prerequisite PRs have merged and the
 dependent PR has been replayed onto the latest default branch.
 
 Do not merge anything unless the user explicitly grants merge authority for
-this PR batch check/merge run.
+this PR batch check/merge run. If merge authority is granted, the
+`pr-batch-check-merge` skill should execute the live PR checks and merge or
+queue only PRs that satisfy every gate.
 ```
 ````
 
@@ -604,7 +606,7 @@ Return:
 
 1. the ranked issue list
 2. the paste-ready autonomous development prompt
-3. a paste-ready PR batch check/merge handoff prompt, included at the end of the
+3. a paste-ready PR batch check/merge handoff block, included at the end of the
    autonomous development prompt
 
 If the user asks only for the prompt, still include a short ranking rationale before the prompt unless they explicitly request "prompt only".
