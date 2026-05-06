@@ -16,14 +16,21 @@ The issue skill helps a coding agent:
 - rank issues by dependency, risk, and leverage
 - create a bounded batch plan
 - draft a prompt that starts from a clean worktree
+- classify risk lanes and parallel-safe lanes
+- decompose umbrella issues before implementation
 - choose independent, stacked, bundled, or blocked execution modes
+- emit a compact PR readiness manifest for integration handoff
 - keep PR creation, validation, and merge handoff explicit
 
 The PR skill helps a coding agent:
 
 - inspect live PR state before deciding readiness
-- classify PRs by checks, reviews, conflicts, stack order, and mergeability
+- classify PRs with facts, required gates, observed state, and a readiness
+  decision
+- check branch protection, rulesets, required checks, reviews, conflicts, stack
+  order, merge queue state, and mergeability
 - treat stacked PR checks as provisional until replayed onto the default branch
+- treat unknown required gates as blocking
 - merge only when merge authority is explicit
 
 ## Install
@@ -52,6 +59,10 @@ coding session.
 The generated prompt is designed to verify current repository and issue state
 before editing. It also includes a worktree setup path so the implementation
 session can work away from the base checkout.
+
+For larger batches, the issue skill can classify parallel-safe lanes. If the
+environment cannot run multiple coding sessions, the generated prompt should
+serialize those lanes while preserving the metadata for later integration.
 
 After the implementation session opens PRs, use `pr-batch-check-merge-prompt`
 to prepare a separate PR queue check/merge prompt:

@@ -79,7 +79,67 @@ Usually avoid selecting:
 - broad umbrella issues that should first be split
 - issues whose acceptance criteria require external approvals the autonomous session cannot perform
 
-### 4. Produce the Top-N Recommendation
+### 4. Decompose Umbrella Issues
+
+If a top candidate is an umbrella issue, split or defer it before drafting the
+implementation prompt.
+
+Prefer child issues with:
+
+- one acceptance path per child
+- one primary risk surface per child when possible
+- clear production entrypoints or user-facing behavior
+- an explicit parent issue reference
+- closure metadata explaining how the parent will be proven complete
+
+Do not split when splitting would hide a required migration, schema transition,
+shared protocol change, or cross-cutting contract that must be reviewed and
+validated as one unit. In that case, keep it bundled or blocked and explain why.
+
+If child issues do not yet exist and the user asked only for a prompt, include a
+child-issue draft section instead of silently treating the parent as
+implementable.
+
+### 5. Classify Risk Lanes
+
+Before choosing execution mode, classify each selected issue by risk lane.
+
+Use these lanes as a starting vocabulary:
+
+- `docs-test-only`
+- `ui`
+- `local-refactor`
+- `shared-api-schema`
+- `persistence-migration`
+- `auth-security`
+- `external-io-secrets`
+- `runtime-state`
+- `release-deploy`
+
+Use risk lanes to decide verification depth, review strictness, parallel
+safety, and whether an issue should be independent, stacked, bundled, or
+blocked. If a lane is uncertain, mark it `unknown` and serialize until the
+uncertainty is resolved.
+
+### 6. Build Execution Lanes
+
+Classify each issue's execution relationship:
+
+- `parallel-safe`: low-overlap issues with distinct files, contracts, state, and
+  risk lanes; may run in separate worktrees or separate coding sessions.
+- `serial`: issues that share files, tests, contracts, runtime state, or risky
+  review surfaces.
+- `stacked`: later issue needs code from an earlier unmerged PR.
+- `bundled`: separate PRs would knowingly create broken intermediate states or
+  duplicate one inseparable migration/schema/test-fixture change.
+- `blocked`: prerequisite context or external approval is missing.
+
+When generating prompts for parallel-safe lanes, create one isolated worktree
+per lane and give each lane clear issue ownership. If the current environment
+cannot run parallel sessions, preserve the lane metadata but serialize the work.
+When uncertain, serialize.
+
+### 7. Produce the Top-N Recommendation
 
 Before drafting the long prompt, summarize the selected issues and why they are ordered that way.
 
@@ -94,8 +154,9 @@ Use this concise shape:
 ```
 
 Mention strong next-tier candidates when useful, but keep the main list focused.
+Include each selected issue's risk lane and execution relationship.
 
-### 5. Draft the Autonomous Development Prompt
+### 8. Draft the Autonomous Development Prompt
 
 The prompt must be paste-ready. It should be specific enough that another session can start work without re-reading this conversation, but it must require that session to verify current repo and issue state before editing.
 
@@ -112,6 +173,7 @@ Include:
   - `gh issue list --state open --limit 100`
 - target issue list and recommended order
 - prerequisites and dependency notes
+- risk lane and parallel/serial lane for each issue
 - execution mode for each issue: independent PR, stacked PR, bundled PR, or
   blocked until prerequisite PR merge
 - implementation rules
@@ -121,6 +183,7 @@ Include:
 - PR and handoff policy
 - safety/approval constraints
 - status-file path
+- PR readiness manifest contract
 - PR batch check/merge handoff prompt
 - final-report format
 
@@ -137,24 +200,46 @@ tmp/nightly-longrun-issues-status.md
 tmp/nightly-issues-793-plus-status.md
 ```
 
-Default worktree strategy:
+Worktree and lane strategy:
 
-- Generate prompts that create one isolated worktree for the whole issue batch.
-- Use the requested repository as the base repo, and create the worktree outside
-  that repo under a sibling or user-specified worktree root.
-- Keep the serial execution model: one batch worktree, one active issue branch,
-  one PR at a time.
-- Do not ask the autonomous session to create one worktree per issue unless the
-  user explicitly asks for parallel lanes.
+- Generate prompts that create isolated worktrees outside the base repository,
+  under a sibling or user-specified worktree root.
+- If the issue set is not clearly parallel-safe, use one batch worktree and one
+  active issue branch at a time.
+- If the issue set has independent low-overlap lanes, the generated prompt may
+  create one worktree per lane or emit separate lane prompts. Each lane must
+  have clear issue ownership, branch naming, status-file scope, and conflict
+  boundaries.
+- Do not run issues in parallel when they share files, tests, schemas, runtime
+  state, migrations, auth/security surfaces, external IO, release/deploy
+  surfaces, or stack dependencies.
 - If the intended worktree path already exists, the generated prompt should tell
   the session to inspect it first and either reuse it only when clean and clearly
   intended for this batch, or choose a new unique path. Do not remove an existing
   dirty worktree as a startup shortcut.
-- At the start of each issue, refresh from `origin/<default-branch>`, detach to
-  the latest base, and then create that issue's branch.
+- Fresh worktrees may lack ignored setup files, local configuration, caches, or
+  dependencies. The generated prompt should require per-worktree setup
+  verification and must not copy secrets unless the repository's policy
+  explicitly allows it.
+- At the start of each issue, refresh from that issue's intended base. For
+  independent PRs this is `origin/<default-branch>`; for stacked PRs this is the
+  prerequisite branch recorded in the execution plan.
 - When selected issues overlap with active PRs, another parallel batch, or
   user-named dependency PRs, include `gh pr list --state open --limit 50` in the
   startup checks and before each issue starts.
+
+Risk lane usage:
+
+- `docs-test-only`: lighter validation may be acceptable if repo policy allows.
+- `ui`: include visual or interaction checks when the repository supports them.
+- `local-refactor`: require focused regression tests for the touched module.
+- `shared-api-schema`: require boundary or contract tests.
+- `persistence-migration`: serialize; require migration, rollback, or fixture
+  validation.
+- `auth-security`: serialize; require security-focused review.
+- `external-io-secrets`: serialize; gate external calls and secret handling.
+- `runtime-state`: serialize; verify state transitions and recovery paths.
+- `release-deploy`: block or require explicit release/deploy authority.
 
 Execution modes:
 
@@ -178,6 +263,45 @@ session to merge PRs, close issues manually, or mutate PR base branches after
 handoff unless the user explicitly asks for that in the implementation run.
 Merge execution belongs in a separate PR batch check/merge session.
 
+Stacked PR metadata must include the original base SHA, prerequisite PR or
+branch, dependent branch, expected replay action (`rebase`, `retarget`, or
+`cherry-pick`), and replay owner (`pr-batch-check-merge-prompt`, `human`, or
+`blocked`). The implementation session must not silently retarget stacked PRs
+after handoff.
+
+Implementation PR readiness means the PR was opened with the intended base and
+linked issues, the execution mode and stack/bundle metadata were recorded,
+validation evidence and CI inspection were captured, independent review status
+was recorded when available, unresolved risks were listed, and replay or human
+judgment needs were marked. It does not mean merge-ready.
+
+Emit a compact PR readiness manifest for the PR batch check/merge session. Use
+this shape:
+
+```text
+PR readiness manifest:
+- pr: <PR number or pending>
+  issues: [<issue numbers>]
+  mode: independent | stacked | bundled | blocked
+  risk_lanes: [<risk lanes>]
+  head_branch: <branch>
+  base_branch: <branch>
+  base_sha_at_handoff: <sha or unknown>
+  head_sha_at_handoff: <sha or unknown>
+  stack_parent: <PR/branch or none>
+  stack_order: <position or none>
+  replay_required: true | false
+  replay_plan: <rebase | retarget | cherry-pick | none | unknown>
+  replay_owner: pr-batch-check-merge-prompt | human | blocked | none
+  validation: [<commands and results>]
+  ci_state_observed: <passing | failing | pending | not-run | unknown>
+  review_state_observed: <clear | findings-fixed | needs-review | unknown>
+  machine_review_signals: <none | present | unknown>
+  unresolved_risks: [<risks>]
+  human_action_required: true | false
+  next_action: <check-merge | replay-then-check | fix | wait | human-review>
+```
+
 At the end of the generated implementation prompt, include a paste-ready
 handoff prompt for a PR batch check/merge session. If a companion skill named
 `pr-batch-check-merge-prompt` is installed, tell the next session to use it.
@@ -195,6 +319,10 @@ Startup steps:
   `git switch <DEFAULT_BRANCH> && git pull --ff-only`.
 - Run `git fetch origin`.
 - Run `mkdir -p <WORKTREE_ROOT>`.
+- Verify per-worktree setup requirements before coding. Fresh worktrees may
+  miss ignored environment files, local configuration, caches, or installed
+  dependencies. Do not copy secrets unless repository policy explicitly allows
+  it.
 - If `<BATCH_WORKTREE_PATH>` already exists, inspect it first. Reuse it only
   when it is clean and clearly intended for this batch. If it is dirty or its
   purpose is unclear, do not delete it; choose a new unique worktree path.
@@ -212,12 +340,17 @@ Startup steps:
   - #<N4>: <title>
   - #<N5>: <title>
 - Execution plan:
-  - #<N1>: independent PR | stacked PR on #<N0> | bundled PR with #<N2> |
-    blocked until prerequisite PR merge
-  - #<N2>: <execution mode and base/dependency notes>
-  - #<N3>: <execution mode and base/dependency notes>
-  - #<N4>: <execution mode and base/dependency notes>
-  - #<N5>: <execution mode and base/dependency notes>
+  - #<N1>: risk lane <lane>; execution lane <serial | parallel-safe lane A |
+    stacked | bundled | blocked>; mode <independent PR | stacked PR |
+    bundled PR | blocked until prerequisite PR merge>
+  - #<N2>: <risk lane, execution lane, mode, base/dependency notes>
+  - #<N3>: <risk lane, execution lane, mode, base/dependency notes>
+  - #<N4>: <risk lane, execution lane, mode, base/dependency notes>
+  - #<N5>: <risk lane, execution lane, mode, base/dependency notes>
+- Parallel lane plan:
+  - <lane A>: <issues>, worktree <path>, owner/session <if applicable>
+  - <lane B>: <issues>, worktree <path>, owner/session <if applicable>
+  - If no lane is clearly parallel-safe, keep one serial batch worktree.
 - If a target issue is already closed, skip it and record the reason in the
   status file.
 - If related new open issues appear, prioritize completing this target issue
@@ -228,8 +361,13 @@ Core policy:
 - Prefer real code, tests, and CLI output over docs or memory.
 - Use one issue, one branch, and one PR by default. Do not bundle everything
   into one large PR.
-- Work serially inside one batch worktree. Do not implement multiple issues in
-  parallel.
+- Work serially inside a lane. Run multiple lanes in parallel only when the
+  execution plan marks them parallel-safe and each lane has an isolated
+  worktree. If the environment cannot run parallel sessions, serialize the
+  lanes without dropping the lane metadata.
+- Do not run issues in parallel when they share files, tests, schemas, runtime
+  state, migrations, auth/security surfaces, external IO, release/deploy
+  surfaces, or stack dependencies.
 - Choose the execution mode before starting each issue:
   - independent PR
   - stacked PR
@@ -252,6 +390,10 @@ Core policy:
 - Respect dependencies. <dependency notes>
 - Implement the smallest sufficient vertical slice that satisfies each issue's
   acceptance criteria.
+- If an issue is an umbrella issue, split or draft child issues before
+  implementation. Prefer one acceptance path and one primary risk surface per
+  child. Do not split a migration, schema transition, shared protocol, or
+  cross-cutting contract if that split would hide the real review boundary.
 - Do not include unrelated cleanup, broad redesign, or opportunistic fixes.
 - For user intent, natural language, runtime state, safety decisions, target
   selection, and workflow semantics, do not ship short-term keyword lists,
@@ -274,37 +416,53 @@ Core policy:
 
 Recommended implementation order:
 1. #<N1>
+   - Risk lane: <risk lane>
+   - Execution lane: <serial | parallel-safe lane A | stacked | bundled | blocked>
    - Execution mode: <independent PR | stacked PR | bundled PR | blocked>
    - Base/dependency: <default branch | prerequisite branch/PR | bundled issues>
+   - Worktree: <path>
    - <expected implementation direction>
    - <important acceptance criteria>
 
 2. #<N2>
+   - Risk lane: <risk lane>
+   - Execution lane: <serial | parallel-safe lane A | stacked | bundled | blocked>
    - Execution mode: <independent PR | stacked PR | bundled PR | blocked>
    - Base/dependency: <default branch | prerequisite branch/PR | bundled issues>
+   - Worktree: <path>
    - <expected implementation direction>
    - <important acceptance criteria>
 
 3. #<N3>
+   - Risk lane: <risk lane>
+   - Execution lane: <serial | parallel-safe lane A | stacked | bundled | blocked>
    - Execution mode: <independent PR | stacked PR | bundled PR | blocked>
    - Base/dependency: <default branch | prerequisite branch/PR | bundled issues>
+   - Worktree: <path>
    - <expected implementation direction>
    - <important acceptance criteria>
 
 4. #<N4>
+   - Risk lane: <risk lane>
+   - Execution lane: <serial | parallel-safe lane A | stacked | bundled | blocked>
    - Execution mode: <independent PR | stacked PR | bundled PR | blocked>
    - Base/dependency: <default branch | prerequisite branch/PR | bundled issues>
+   - Worktree: <path>
    - <expected implementation direction>
    - <important acceptance criteria>
 
 5. #<N5>
+   - Risk lane: <risk lane>
+   - Execution lane: <serial | parallel-safe lane A | stacked | bundled | blocked>
    - Execution mode: <independent PR | stacked PR | bundled PR | blocked>
    - Base/dependency: <default branch | prerequisite branch/PR | bundled issues>
+   - Worktree: <path>
    - <expected implementation direction>
    - <important acceptance criteria>
 
 Per-issue workflow:
-1. Confirm the issue's execution mode and write it to `<STATUS_FILE>`.
+1. Confirm the issue's risk lane, execution lane, and execution mode, then write
+   them to `<STATUS_FILE>`.
 2. Read the issue body and acceptance criteria with `gh issue view <number>`.
 3. If the mode is `blocked until prerequisite PR merge`, do not implement it.
    Record the blocker, prerequisite PR, and resume condition in `<STATUS_FILE>`,
@@ -321,36 +479,43 @@ Per-issue workflow:
      dependent PR against the prerequisite branch, not the default branch.
    - For a bundled PR, create one branch for the bundled issue set and record
      every included issue before editing.
-6. Trace the relevant code with `rg`. If broad exploration is needed, delegate
+6. Verify per-worktree setup: dependencies, local config requirements, and test
+   availability. Do not copy secrets unless repository policy explicitly allows
+   it.
+7. Trace the relevant code with `rg`. If broad exploration is needed, delegate
    it to an explorer if the environment supports that.
-7. Write a short implementation plan to `<STATUS_FILE>`.
-8. Implement the fix.
-9. Add or update tests. Follow the repository's local instructions, and prefer
+8. Write a short implementation plan to `<STATUS_FILE>`.
+9. Implement the fix.
+10. Add or update tests. Follow the repository's local instructions, and prefer
    production entrypoints and boundary-level contract tests when relevant.
-10. Run the repository's standard validation commands. Include relevant focused
+11. Run the repository's standard validation commands. Include relevant focused
    tests. If present and appropriate, run commands such as:
    - `npm run typecheck`
    - `npm test -- <focused-test>`
    - `npm run lint`
    - `npm run test:changed`
-11. Get an independent review pass if the environment supports it, focused only
+12. Get an independent review pass if the environment supports it, focused only
     on material issues.
-12. Address material findings and re-run validation.
-13. Commit, push, and open a ready PR.
-14. The PR body must include:
+13. Address material findings and re-run validation.
+14. Commit, push, and open a ready PR.
+15. The PR body must include:
    - `Closes #<number>` or every `Closes #<number>` line for a bundled PR
    - implementation summary
+   - risk lane and execution lane
    - validation commands
    - known unresolved risks
    - execution mode
    - base branch and stack order for stacked PRs
+   - base SHA and head SHA at handoff when available
+   - replay plan and replay owner for stacked PRs
    - dependency or integration status for related PRs or parallel batches
    - a note that stacked PR checks are provisional until replayed onto the
      default branch after prerequisite merges
-15. Inspect CI/checks with `gh pr checks --watch` when available.
-16. Do not merge. Do not close issues manually. Do not retarget PR base branches
+   - a compact PR readiness manifest entry
+16. Inspect CI/checks with `gh pr checks --watch` when available.
+17. Do not merge. Do not close issues manually. Do not retarget PR base branches
     after handoff unless explicitly asked.
-17. Before moving to the next issue, return to the base required by the next
+18. Before moving to the next issue, return to the base required by the next
     issue's execution mode.
 
 Autonomous judgment:
@@ -375,6 +540,8 @@ Autonomous judgment:
 
 Final report:
 - PRs opened
+- PR readiness manifest
+- risk lanes and parallel lanes used
 - stacked PR order, if any
 - bundled PR groups, if any
 - issues linked by PRs, and issues left without PRs with reasons
@@ -392,6 +559,28 @@ Use `pr-batch-check-merge-prompt` if it is installed.
 Repository: <BASE_REPO_PATH>
 Default branch: <DEFAULT_BRANCH>
 Implementation status file: <STATUS_FILE>
+
+PR readiness manifest:
+- pr: <PR number or pending>
+  issues: [<issue numbers>]
+  mode: <independent | stacked | bundled | blocked>
+  risk_lanes: [<risk lanes>]
+  head_branch: <branch>
+  base_branch: <branch>
+  base_sha_at_handoff: <sha or unknown>
+  head_sha_at_handoff: <sha or unknown>
+  stack_parent: <PR/branch or none>
+  stack_order: <position or none>
+  replay_required: <true | false>
+  replay_plan: <rebase | retarget | cherry-pick | none | unknown>
+  replay_owner: <pr-batch-check-merge-prompt | human | blocked | none>
+  validation: [<commands and results>]
+  ci_state_observed: <passing | failing | pending | not-run | unknown>
+  review_state_observed: <clear | findings-fixed | needs-review | unknown>
+  machine_review_signals: <none | present | unknown>
+  unresolved_risks: [<risks>]
+  human_action_required: <true | false>
+  next_action: <check-merge | replay-then-check | fix | wait | human-review>
 
 Review these PRs in dependency order:
 - <PR number>: <title> | mode: independent | base: <branch>

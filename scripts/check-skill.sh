@@ -19,7 +19,7 @@ grep -q '^name: issue-autonomy-prompt$' "$skill_file" \
 grep -q '^name: pr-batch-check-merge-prompt$' "$pr_skill_file" \
   || fail "missing expected PR skill name"
 
-grep -q 'Default worktree strategy' "$skill_file" \
+grep -q 'Worktree and lane strategy' "$skill_file" \
   || fail "missing worktree strategy section"
 
 grep -q 'Only when creating a new `<BATCH_WORKTREE_PATH>`' "$skill_file" \
@@ -34,6 +34,24 @@ grep -q 'Do not merge PRs in this implementation session' "$skill_file" \
 grep -q 'stacked PR checks are provisional' "$skill_file" \
   || fail "implementation skill must preserve stacked PR check caveat"
 
+grep -q 'Classify Risk Lanes' "$skill_file" \
+  || fail "implementation skill must classify risk lanes"
+
+grep -q 'Build Execution Lanes' "$skill_file" \
+  || fail "implementation skill must classify execution lanes"
+
+grep -q 'Decompose Umbrella Issues' "$skill_file" \
+  || fail "implementation skill must define umbrella decomposition"
+
+grep -q 'PR readiness manifest' "$skill_file" \
+  || fail "implementation skill must emit PR readiness manifest"
+
+grep -q 'base_sha_at_handoff' "$skill_file" \
+  || fail "manifest must include base SHA"
+
+grep -q 'replay_owner' "$skill_file" \
+  || fail "manifest must include replay owner"
+
 grep -q '^````md$' "$skill_file" \
   || fail "issue prompt template must use four-backtick fence for nested handoff"
 
@@ -42,6 +60,32 @@ grep -q 'Merge authority must be explicit' "$pr_skill_file" \
 
 grep -q 'Do not merge a dependent PR solely because it passed against a prerequisite' "$pr_skill_file" \
   || fail "PR skill must handle stacked PR provisional checks"
+
+grep -q 'Build the Readiness Model' "$pr_skill_file" \
+  || fail "PR skill must define readiness model"
+
+grep -q 'Unknown gate state is blocking' "$pr_skill_file" \
+  || fail "PR skill must block unknown required gates"
+
+grep -q 'expected source apps' "$pr_skill_file" \
+  || fail "PR skill must track expected check source apps"
+
+grep -q 'merge_group' "$pr_skill_file" \
+  || fail "PR skill must handle merge queue checks"
+
+grep -q 'ready-to-enqueue' "$pr_skill_file" \
+  || fail "PR skill must distinguish queue enqueue readiness"
+
+grep -q 'repo_full_name=' "$pr_skill_file" \
+  || fail "PR skill must derive executable repo ruleset path"
+
+ruleset_placeholder='repos/<owner>/<repo>/rule''sets'
+if grep -q "$ruleset_placeholder" "$pr_skill_file"; then
+  fail "PR skill contains non-executable rulesets placeholder"
+fi
+
+grep -q 'Machine review signals' "$pr_skill_file" \
+  || fail "PR skill must classify machine review signals"
 
 grep -q 'Do not include merge commands in' "$pr_skill_file" \
   || fail "PR skill must omit merge commands when authority is absent"

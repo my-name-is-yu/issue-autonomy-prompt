@@ -45,9 +45,14 @@ Run:
 git remote -v
 git branch --show-current
 gh repo view --json defaultBranchRef --jq .defaultBranchRef.name
+repo_full_name="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+gh api "repos/${repo_full_name}/rulesets"
 gh pr list --state open --limit 100 \
   --json number,title,headRefName,baseRefName,isDraft,mergeStateStatus,url
 ```
+
+If rulesets or branch protection cannot be queried, record that gate as
+`unknown` and block merge readiness instead of continuing as if no rules exist.
 
 Determine whether the user explicitly granted merge authority for this run.
 If merge authority is unclear, generated prompts must stop at checks,
@@ -75,27 +80,66 @@ gh pr view <number> \
 Use GraphQL or GitHub UI tooling when unresolved review threads or merge queue
 details matter and the local `gh pr view` output is insufficient.
 
-### 3. Classify Each PR
+### 3. Build the Readiness Model
+
+For each PR, build a compact readiness record:
+
+- `facts`: PR number, linked issue numbers, mode, base branch, head branch, base
+  SHA, head SHA, stack parent, stack order, touched risky surfaces, and author.
+- `required_gates`: branch protection or ruleset policy, required checks and
+  expected source apps, review policy, CODEOWNERS policy, unresolved-thread
+  policy, merge queue requirement, and required code scanning or machine-review
+  gates.
+- `observed_state`: check conclusions and source apps, `reviewDecision`,
+  requested reviewers, requested CODEOWNERS, unresolved review threads,
+  approvals after latest push, `mergeStateStatus`, queue state, machine-review
+  signals, and branch freshness.
+- `decision`: `ready-to-merge`, `ready-to-enqueue`,
+  `ready-after-prerequisite`, `needs-rebase-or-retarget`, `needs-review`,
+  `needs-fix`, `blocked`, or `unknown`.
+
+Unknown gate state is blocking. If rulesets, branch protection, expected check
+sources, merge queue state, unresolved threads, or CODEOWNER requirements cannot
+be verified, classify the PR as `unknown` or `blocked` and explain the missing
+evidence.
+
+Machine review signals such as reviewdog, Danger, code scanning, or AI review
+comments are evidence, not human approval. They block merge only when they are
+required checks, failing checks, required code-scanning protections, or explicit
+repository policy.
+
+### 4. Classify Each PR
 
 Classify each PR as:
 
 - `ready-to-merge`: non-draft, required checks passing, review state acceptable,
   mergeable against the current intended base, and no unresolved material
   blockers
+- `ready-to-enqueue`: merge queue is required; normal PR gates are satisfied,
+  but queue-context checks have not passed yet
 - `ready-after-prerequisite`: stacked PR whose prerequisite must merge first
 - `needs-rebase-or-retarget`: base branch or default-branch compatibility must
   be refreshed before checks are meaningful
+- `needs-review`: required review, CODEOWNER review, or unresolved-thread
+  evidence is missing or stale
 - `needs-fix`: failing checks, unresolved material review comments, conflicts,
   or acceptance gaps
 - `blocked`: missing permissions, ambiguous stack order, external approval,
   branch protection, merge queue state, or unclear ownership
+- `unknown`: a required gate could not be verified
 
 For stacked PRs, checks against a prerequisite branch are provisional. Do not
 mark a stacked PR `ready-to-merge` until the prerequisite PR has merged, the
 dependent branch has been replayed or retargeted onto the latest default branch,
 and checks have passed in that final context.
 
-### 4. Determine Merge Order
+For repositories using a merge queue, distinguish `ready-to-enqueue` from
+`ready-to-merge`. A PR can pass PR checks and still fail merge queue checks
+against the latest target branch plus queued changes. If required GitHub Actions
+checks do not appear to support the `merge_group` event, flag the queue result
+as `unknown` or `blocked` rather than assuming the queue will pass.
+
+### 5. Determine Merge Order
 
 Prefer this order:
 
@@ -112,11 +156,15 @@ Do not merge:
 - draft PRs
 - PRs with failing required checks
 - PRs with unresolved material review threads
+- PRs with missing or stale required reviews or CODEOWNER reviews
 - stacked PRs still based on a prerequisite branch
 - PRs whose mergeability or branch protection state is unknown
+- PRs whose required check source app does not match the expected source
+- PRs whose merge queue or `merge_group` readiness is unknown when a queue is
+  required
 - PRs requiring external approval the session does not have
 
-### 5. Draft the PR Check/Merge Prompt
+### 6. Draft the PR Check/Merge Prompt
 
 The prompt must be paste-ready. Include:
 
@@ -124,6 +172,7 @@ The prompt must be paste-ready. Include:
 - default branch
 - merge authority status
 - target PR list
+- readiness records
 - stack/dependency order
 - per-PR checks to run
 - classification rules
@@ -147,6 +196,7 @@ Merge authority: <explicitly granted | not granted>
 Startup checks:
 - `git fetch origin`
 - `gh pr list --state open --limit 100`
+- Inspect branch protection or rulesets for `<DEFAULT_BRANCH>` when available.
 - For each target PR:
   - `gh pr view <number> --json number,title,body,state,isDraft,headRefName,baseRefName,mergeStateStatus,reviewDecision,statusCheckRollup,commits,files,closingIssuesReferences,url`
   - `gh pr checks <number>`
@@ -158,17 +208,65 @@ Target PRs:
 - #<PR2>: <title> | mode: <independent | stacked | bundled> | base: <branch>
 - #<PR3>: <title> | mode: <independent | stacked | bundled> | base: <branch>
 
+Readiness record for each PR:
+- facts:
+  - pr: <number>
+  - issues: [<issue numbers>]
+  - mode: <independent | stacked | bundled>
+  - base_branch: <branch>
+  - head_branch: <branch>
+  - base_sha: <sha or unknown>
+  - head_sha: <sha or unknown>
+  - stack_parent: <PR/branch or none>
+  - stack_order: <position or none>
+  - risky_surfaces: [<risk lanes>]
+- required_gates:
+  - branch_protection_or_ruleset: <known | unknown | none>
+  - required_checks: [<check name + expected source app>]
+  - review_policy: <required | optional | unknown>
+  - codeowners_policy: <required | optional | unknown>
+  - unresolved_thread_policy: <required | optional | unknown>
+  - merge_queue: <required | optional | unknown>
+  - required_machine_signals: [<code scanning/reviewdog/Danger/etc.>]
+- observed_state:
+  - checks: [<name, source, conclusion>]
+  - reviewDecision: <APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | unknown>
+  - requested_reviewers: [<users/teams>]
+  - unresolved_review_threads: <none | present | unknown>
+  - approvals_after_latest_push: <yes | no | unknown>
+  - mergeStateStatus: <status>
+  - queue_state: <not-required | queued | passed | failed | unknown>
+  - machine_review_signals: <none | present | unknown>
+- decision: <ready-to-merge | ready-to-enqueue | ready-after-prerequisite |
+  needs-rebase-or-retarget | needs-review | needs-fix | blocked | unknown>
+
 Classification:
 - `ready-to-merge`: non-draft, required checks passing, review state acceptable,
   mergeable against the current intended base, and no unresolved material
-  blockers.
+  blockers. For merge-queue repositories, this means required queue-context
+  checks have passed.
+- `ready-to-enqueue`: merge queue is required; normal PR gates are satisfied,
+  but queue-context checks have not passed yet.
 - `ready-after-prerequisite`: stacked PR waiting for a prerequisite PR.
 - `needs-rebase-or-retarget`: checks are stale because the base branch or
   default branch changed.
+- `needs-review`: required review, CODEOWNER review, or unresolved-thread
+  evidence is missing or stale.
 - `needs-fix`: failing checks, unresolved material review comments, conflicts,
   or acceptance gaps.
 - `blocked`: missing permissions, external approval, ambiguous stack order,
   branch protection, merge queue state, or unclear ownership.
+- `unknown`: a required gate could not be verified.
+
+Unknown-state policy:
+- Treat unknown required gates as blocking.
+- Do not treat a green check as satisfying protection if the expected source app
+  is unknown or does not match.
+- Do not treat `reviewDecision=APPROVED` as sufficient when CODEOWNERS,
+  latest-push approval, stale approval, or unresolved-thread requirements are
+  unknown.
+- Treat machine-review signals as evidence, not human approval. They block only
+  when required by checks, code-scanning protection, or explicit repo policy.
 
 Stacked PR rules:
 - Treat checks on a stacked PR as provisional while it is based on another PR
@@ -180,6 +278,14 @@ Stacked PR rules:
   PR merge-ready.
 - Do not merge a dependent PR solely because it passed against a prerequisite
   branch.
+
+Merge queue rules:
+- If a merge queue is required, classify a PR as ready to enqueue only after
+  normal PR gates are satisfied.
+- Required queue checks must pass in the merge queue context before the PR is
+  considered merge-ready.
+- If required GitHub Actions checks do not appear to support `merge_group`,
+  mark queue readiness as unknown or blocked.
 
 Merge policy:
 - If merge authority is not explicitly granted, do not merge anything. Stop
