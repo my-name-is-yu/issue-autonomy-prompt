@@ -58,6 +58,14 @@ grep -q 'replay_owner' "$skill_file" \
 grep -q '^````md$' "$skill_file" \
   || fail "issue prompt template must use four-backtick fence for nested handoff"
 
+if grep -RInE 'tmp/|STATUS_FILE|status[- ]file|status memo' \
+  "$skill_file" "$repo_root/examples" "$repo_root/README.md"; then
+  fail "implementation prompt must not require tmp status files"
+fi
+
+grep -q 'Do not create progress memo' "$skill_file" \
+  || fail "implementation skill must forbid progress memo files"
+
 grep -q 'Merge authority must be explicit' "$pr_skill_file" \
   || fail "PR skill must require explicit merge authority"
 

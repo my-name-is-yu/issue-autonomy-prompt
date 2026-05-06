@@ -182,23 +182,9 @@ Include:
 - review-agent requirement for substantive changes
 - PR and handoff policy
 - safety/approval constraints
-- status-file path
 - PR readiness manifest contract
 - PR batch check/merge handoff block
 - final-report format
-
-Default status file:
-
-```text
-tmp/autonomous-issue-run-status.md
-```
-
-If the issue set has a clear theme, choose a more specific path such as:
-
-```text
-tmp/nightly-longrun-issues-status.md
-tmp/nightly-issues-793-plus-status.md
-```
 
 Worktree and lane strategy:
 
@@ -208,7 +194,7 @@ Worktree and lane strategy:
   active issue branch at a time.
 - If the issue set has independent low-overlap lanes, the generated prompt may
   create one worktree per lane or emit separate lane prompts. Each lane must
-  have clear issue ownership, branch naming, status-file scope, and conflict
+  have clear issue ownership, branch naming, handoff scope, and conflict
   boundaries.
 - Do not run issues in parallel when they share files, tests, schemas, runtime
   state, migrations, auth/security surfaces, external IO, release/deploy
@@ -351,11 +337,11 @@ Startup steps:
   - <lane A>: <issues>, worktree <path>, owner/session <if applicable>
   - <lane B>: <issues>, worktree <path>, owner/session <if applicable>
   - If no lane is clearly parallel-safe, keep one serial batch worktree.
-- If a target issue is already closed, skip it and record the reason in the
-  status file.
+- If a target issue is already closed, skip it and include the reason in the
+  final report.
 - If related new open issues appear, prioritize completing this target issue
-  group. Record only clear blockers, duplicates, or prerequisites in the status
-  file.
+  group. Include only clear blockers, duplicates, or prerequisites in the final
+  report or PR body.
 
 Core policy:
 - Prefer real code, tests, and CLI output over docs or memory.
@@ -386,7 +372,8 @@ Core policy:
   until the prerequisite PR merges.
 - If related open PRs or parallel batches exist, run
   `gh pr list --state open --limit 50` before each issue. If a conflict is
-  likely, record it in `<STATUS_FILE>` and reorder the issue sequence.
+  likely, include the conflict in the final report and reorder the issue
+  sequence.
 - Respect dependencies. <dependency notes>
 - Implement the smallest sufficient vertical slice that satisfies each issue's
   acceptance criteria.
@@ -411,8 +398,9 @@ Core policy:
 - Do not close issues manually.
 - Do not mutate PR base branches after handoff unless the user explicitly asks
   for that in this implementation session.
-- Record decisions, remaining work, and blockers in `<STATUS_FILE>` throughout
-  the run.
+- Keep the worktree focused on code changes only. Do not create progress memo
+  files just to track the run. Put durable handoff state in PR bodies, PR
+  readiness manifest entries, review comments when needed, and the final report.
 
 Recommended implementation order:
 1. #<N1>
@@ -461,12 +449,12 @@ Recommended implementation order:
    - <important acceptance criteria>
 
 Per-issue workflow:
-1. Confirm the issue's risk lane, execution lane, and execution mode, then write
-   them to `<STATUS_FILE>`.
+1. Confirm the issue's risk lane, execution lane, and execution mode before
+   editing.
 2. Read the issue body and acceptance criteria with `gh issue view <number>`.
 3. If the mode is `blocked until prerequisite PR merge`, do not implement it.
-   Record the blocker, prerequisite PR, and resume condition in `<STATUS_FILE>`,
-   then move to the next issue.
+   Include the blocker, prerequisite PR, and resume condition in the final
+   report, then move to the next issue.
 4. If related open PRs or parallel batches exist, run
    `gh pr list --state open --limit 50`.
 5. Prepare the branch:
@@ -484,7 +472,7 @@ Per-issue workflow:
    it.
 7. Trace the relevant code with `rg`. If broad exploration is needed, delegate
    it to an explorer if the environment supports that.
-8. Write a short implementation plan to `<STATUS_FILE>`.
+8. State a short implementation plan in the session before editing.
 9. Implement the fix.
 10. Add or update tests. Follow the repository's local instructions, and prefer
    production entrypoints and boundary-level contract tests when relevant.
@@ -520,7 +508,7 @@ Per-issue workflow:
 
 Autonomous judgment:
 - If CI fails, read the logs and fix the failure. If you conclude it is an
-  external flaky failure, record evidence in the status file and PR comment.
+  external flaky failure, include evidence in the final report and PR comment.
 - Resolve merge conflicts by fetching `origin/<DEFAULT_BRANCH>` and rebasing or
   merging the current issue branch as appropriate.
 - If acceptance criteria are too broad, prefer the smallest useful vertical
@@ -530,13 +518,13 @@ Autonomous judgment:
   classification as the primary decision mechanism, do not use it. First look
   for an existing typed API, schema, state model, model or LLM classifier, or
   domain parser. If none exists, add a durable contract.
-- If only a keyword or regex workaround seems possible, record that blocker in
-  `<STATUS_FILE>` before implementation and do not ship the workaround.
+- If only a keyword or regex workaround seems possible, stop and report that
+  blocker. Do not ship the workaround.
 - Do not perform external publishing, submissions, secret transmission,
   production mutation, irreversible actions, or financial actions. Treat them
   as approval-required.
-- If you need to touch issues outside the target set, record the reason in
-  `<STATUS_FILE>` before editing.
+- If you need to touch issues outside the target set, state the reason in the
+  session before editing and include it in the final report and PR body.
 
 Final report:
 - PRs opened
@@ -558,7 +546,6 @@ Use `pr-batch-check-merge` if it is installed.
 
 Repository: <BASE_REPO_PATH>
 Default branch: <DEFAULT_BRANCH>
-Implementation status file: <STATUS_FILE>
 
 PR readiness manifest:
 - pr: <PR number or pending>

@@ -36,11 +36,12 @@ Core policy:
   execution plan marks them parallel-safe.
 - Open ready PRs.
 - Do not merge PRs in the implementation session.
-- Record decisions and blockers in `tmp/autonomous-issue-run-status.md`.
+- Do not create progress memo files just to track the run. Put durable handoff
+  state in PR bodies, the PR readiness manifest, and the final report.
 
 Per-issue workflow:
 
-1. Confirm the issue's execution mode and write it to the status file.
+1. Confirm the issue's execution mode before editing.
 2. Read the issue with `gh issue view <number>`.
 3. For #123 and #125, run `git fetch origin && git switch --detach origin/main`
    before creating the issue branch.
@@ -97,7 +98,6 @@ Use `pr-batch-check-merge` if it is installed.
 
 Repository: /path/to/repo
 Default branch: main
-Implementation status file: tmp/autonomous-issue-run-status.md
 
 Review these PRs in dependency order:
 - #201: example first issue | mode: independent | base: main
