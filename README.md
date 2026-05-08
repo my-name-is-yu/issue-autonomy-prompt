@@ -24,6 +24,8 @@ The issue skill helps a coding agent:
 - decompose umbrella issues before implementation
 - choose independent, stacked, bundled, or blocked execution modes
 - emit a compact PR readiness manifest for integration handoff
+- avoid blocking every implementation run on full CI when final CI gating
+  belongs in the PR merge run
 - keep PR creation, validation, and merge handoff explicit
 
 The PR skill helps a coding agent:
@@ -33,6 +35,7 @@ The PR skill helps a coding agent:
   decision
 - check branch protection, rulesets, required checks, reviews, conflicts, stack
   order, merge queue state, and mergeability
+- wait for required CI checks when needed before merging
 - treat stacked PR checks as provisional until replayed onto the default branch
 - treat unknown required gates as blocking
 - merge or queue PRs classified as safe when the user invokes the PR merge skill

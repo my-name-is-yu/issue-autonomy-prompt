@@ -33,6 +33,9 @@ Use this priority order:
 
 Never decide merge readiness from a stale implementation-session report alone.
 Always refresh live PR state immediately before merging or enqueueing a PR.
+This is the authoritative CI gate. Implementation sessions may leave required
+CI pending; this skill must wait or refresh until required checks have a final
+state before merging.
 
 ## Safety Boundary
 
@@ -198,10 +201,20 @@ For each PR in merge order:
    ```
 
 2. Rebuild the readiness record from refreshed evidence.
-3. If the decision is not `ready-to-merge` or `ready-to-enqueue`, do not merge
+3. If required checks are pending or missing from the refreshed state, wait for
+   required checks to complete when the repository tooling supports it:
+
+   ```bash
+   gh pr checks <number> --watch
+   ```
+
+   Then refresh PR state and rebuild the readiness record again. If required
+   checks remain pending, missing, failing, or unknown after the wait or
+   refresh, do not merge or enqueue the PR. Record the blocker.
+4. If the decision is not `ready-to-merge` or `ready-to-enqueue`, do not merge
    or enqueue it. Record the blocker and continue to the next independent PR.
-4. Capture the exact head SHA from the refreshed PR data.
-5. If no merge queue is required and the PR is `ready-to-merge`, use the
+5. Capture the exact head SHA from the refreshed PR data.
+6. If no merge queue is required and the PR is `ready-to-merge`, use the
    repository's normal merge method. If no method is specified and squash merge
    is allowed, run:
 
@@ -209,14 +222,14 @@ For each PR in merge order:
    gh pr merge <number> --squash --delete-branch --match-head-commit <head_sha>
    ```
 
-6. If a merge queue is required and the PR is `ready-to-enqueue`, do not pass a
+7. If a merge queue is required and the PR is `ready-to-enqueue`, do not pass a
    merge strategy. Add the PR to the queue or enable auto-merge with:
 
    ```bash
    gh pr merge <number> --auto --delete-branch --match-head-commit <head_sha>
    ```
 
-7. After each merge or queue action, refresh PR and default-branch state before
+8. After each merge or queue action, refresh PR and default-branch state before
    evaluating the next PR.
 
 If `gh pr merge` fails, do not retry with weaker checks. Re-read the error,

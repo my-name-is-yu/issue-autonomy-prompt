@@ -35,6 +35,9 @@ Core policy:
 - Work inside isolated worktrees. Run separate lanes in parallel only when the
   execution plan marks them parallel-safe.
 - Open ready PRs.
+- After opening a PR, inspect check state once. Fix completed failures. If
+  required CI is still pending, record `ci_state_observed: pending` in the PR
+  readiness manifest and leave final CI gating to `pr-batch-check-merge`.
 - Do not merge PRs in the implementation session.
 - Do not create progress memo files just to track the run. Put durable handoff
   state in PR bodies, the PR readiness manifest, and the final report.
@@ -57,7 +60,9 @@ Per-issue workflow:
    branch from that prerequisite branch.
 5. Implement, test, review, commit, push, and open a ready PR.
 6. For #124, open the PR against `codex/issue-123-example`, not `main`.
-7. Inspect checks with `gh pr checks --watch` when available.
+7. Inspect checks with `gh pr checks <number>`. Fix completed failures; leave
+   pending required CI for the PR merge run unless the risk lane justifies
+   waiting.
 8. Do not merge. Add the PR to the final handoff block.
 
 PR readiness manifest:

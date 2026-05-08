@@ -245,6 +245,23 @@ Implementation philosophy:
 - Run lint, typecheck, and relevant tests when available.
 - Summarize important architectural changes after implementation.
 
+CI responsibility split:
+
+- The implementation session should run local validation, focused tests,
+  typecheck, lint, and any repository-standard checks that are practical before
+  opening a PR.
+- After opening a PR, inspect check state once or with a short refresh. Fix
+  checks that already failed. Do not wait for full CI completion by default.
+- If required CI is still pending, record `ci_state_observed: pending` in the PR
+  readiness manifest and leave final CI gating to `pr-batch-check-merge`.
+- For high-risk lanes such as `runtime-state`, `persistence-migration`,
+  `auth-security`, `external-io-secrets`, or `release-deploy`, the
+  implementation session may wait for required CI when that materially reduces
+  risk. Explain that choice in the final report.
+- The PR merge run is responsible for refreshing live PR state, waiting for
+  required checks to complete when needed, and merging only after required gates
+  pass.
+
 Execution modes:
 
 - `independent PR`: start from `origin/<default-branch>`, open the PR against
@@ -420,6 +437,11 @@ Core policy:
 - Use `rg` and similar searches for investigation, but do not ship decision
   logic based primarily on keyword search.
 - Open ready PRs. Do not mark PRs as draft unless the user explicitly asks.
+- After opening a PR, inspect CI/check state enough to catch immediate failures.
+  Fix any completed failing check. If required CI is pending and the risk lane
+  does not justify waiting, record the pending state in the PR readiness
+  manifest and continue; do not block the implementation run waiting for full
+  CI completion.
 - After substantive changes, get an independent review pass if the environment
   supports it, focused only on material issues.
 - Address material findings and re-run validation.
@@ -532,7 +554,10 @@ Per-issue workflow:
    - a note that stacked PR checks are provisional until replayed onto the
      default branch after prerequisite merges
    - a compact PR readiness manifest entry
-16. Inspect CI/checks with `gh pr checks --watch` when available.
+16. Inspect CI/checks with `gh pr checks <number>` after opening the PR. If a
+    completed check failed, read logs and fix it. If required checks are still
+    pending, record `ci_state_observed: pending` in the PR readiness manifest
+    and continue unless this issue's risk lane justifies waiting for full CI.
 17. Do not merge. Do not close issues manually. Do not retarget PR base branches
     after handoff unless explicitly asked.
 18. Before moving to the next issue, return to the base required by the next
@@ -567,7 +592,7 @@ Final report:
 - bundled PR groups, if any
 - issues linked by PRs, and issues left without PRs with reasons
 - validation commands run
-- CI/check results
+- CI/check state observed, including pending checks left for the PR merge run
 - follow-up issues
 - items needing human judgment
 - PR batch check/merge handoff block

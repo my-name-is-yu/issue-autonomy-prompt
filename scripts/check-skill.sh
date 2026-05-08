@@ -87,6 +87,19 @@ grep -q 'Run lint, typecheck, and relevant tests' "$skill_file" \
 grep -q 'important architectural changes' "$skill_file" \
   || fail "implementation skill final report must include architectural changes"
 
+grep -q 'Do not wait for full CI completion by default' "$skill_file" \
+  || fail "implementation skill must avoid default full CI waits"
+
+grep -q 'ci_state_observed: pending' "$skill_file" \
+  || fail "implementation skill must record pending CI in manifest"
+
+grep -q 'leave final CI gating to `pr-batch-check-merge`' "$skill_file" \
+  || fail "implementation skill must hand final CI gating to PR merge skill"
+
+if grep -RIn -- '--watch' "$skill_file" "$repo_root/examples/serial-batch-prompt.example.md"; then
+  fail "implementation prompt must not require waiting on full CI"
+fi
+
 grep -q 'Merge authority must be explicit' "$pr_skill_file" \
   || fail "PR skill must require explicit merge authority"
 
@@ -104,6 +117,18 @@ grep -q 'Do not draft a prompt' "$pr_skill_file" \
 
 grep -q 'classification and report' "$pr_skill_file" \
   || fail "PR skill must stop without merging for check-only requests"
+
+grep -q 'This is the authoritative CI gate' "$pr_skill_file" \
+  || fail "PR skill must own final CI gating"
+
+grep -q 'gh pr checks <number> --watch' "$pr_skill_file" \
+  || fail "PR skill must wait for required checks when needed"
+
+grep -q 'checks remain pending, missing' "$pr_skill_file" \
+  || fail "PR skill must block unresolved required checks"
+
+grep -q 'rebuild the readiness record again' "$pr_skill_file" \
+  || fail "PR skill must rebuild readiness after waiting for checks"
 
 grep -q 'merge or enqueue the PRs' "$pr_skill_file" \
   || fail "PR skill must perform merge or queue actions"
